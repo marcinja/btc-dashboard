@@ -6,6 +6,7 @@ import (
 	"github.com/go-pg/pg"
 	"github.com/go-pg/pg/orm"
 
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -27,11 +28,14 @@ type Dashboard struct {
 	// Fields specifically for PostgreSQL
 	pgClient *pg.DB
 	pgBatch  dataBatch
+
+	workFile *os.File
 }
 
 // Assumes enviroment variables: DB, DB_USERNAME, DB_PASSWORD, BITCOIND_HOST, BITCOIND_USERNAME, BITCOIND_PASSWORD, are all set.
 // PostgreSQL and bitcoind should already be started.
-func setupDashboard() Dashboard {
+func setupDashboard(time string, id int) Dashboard {
+
 	BITCOIND_HOST, ok := os.LookupEnv("BITCOIND_HOST")
 	if !ok {
 		BITCOIND_HOST = "localhost:8332"
@@ -95,14 +99,28 @@ func setupDashboard() Dashboard {
 		},
 	}
 
+	workFile := fmt.Sprintf("%v/worker-%v-%v", WORKER_PROGRESS_DIR, time, id)
+
+	// Create file to record progress in.
+	file, err := os.Create(workFile)
+	defer file.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dash.workFile = file
+
 	return dash
 }
 
 func (dash *Dashboard) shutdown() {
+	dash.workFile.Close()
 	dash.client.Shutdown()
 	dash.pgClient.Close()
 }
 
+// TODO
+// Sneak in the batch insert here!!
 // inserts a data from a single getblockstats call into the dashboard's DB
 func (dash *Dashboard) insert(stats BlockStats) bool {
 	data := Data{
